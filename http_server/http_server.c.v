@@ -150,7 +150,6 @@ fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 	return 0
 }
 
-// Function to remove a file descriptor from the epoll instance
 fn remove_fd_from_epoll(epoll_fd int, fd int) {
 	C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
 }
