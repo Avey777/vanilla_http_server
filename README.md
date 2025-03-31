@@ -1,4 +1,4 @@
-# vanilla
+# vanilla_http_server
 
 - Fast (Multi-threaded, non-blocking i/o, lock-free, copy-free, epoll, SO_REUSEPORT)
 - Thread affinity (W.I.P.)
@@ -17,17 +17,17 @@
 
 #### From Root Directory
 
-To install the `vanilla` module, follow these steps:
+To install the `vanilla_http_server` module, follow these steps:
 
 1. Create the necessary directories:
 
    ```bash
-   mkdir -p ~/.vmodules/enghitalo/vanilla
+   mkdir -p ~/.vmodules/enghitalo/vanilla_http_server
    ```
 
-2. Copy the `vanilla` directory to the target location:
+2. Copy the `vanilla_http_server` directory to the target location:
    ```bash
-   cp -r ./ ~/.vmodules/enghitalo/vanilla
+   cp -r ./ ~/.vmodules/enghitalo/vanilla_http_server
    ```
 
 This will set up the module in your `~/.vmodules` directory for use.
@@ -35,5 +35,5 @@ This will set up the module in your `~/.vmodules` directory for use.
 #### From repository
 
 ```sh
-v install https://github.com/enghitalo/vanilla
+v install https://github.com/enghitalo/vanilla_http_server
 ```
