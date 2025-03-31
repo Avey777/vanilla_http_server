@@ -1,7 +1,7 @@
 module main
 
-import enghitalo.vanilla_http_server.http_server
-import enghitalo.vanilla_http_server.request_parser
+import enghitalo.vanilla.http_server
+import enghitalo.vanilla.request_parser
 
 fn handle_request(req_buffer []u8) ![]u8 {
 	req := request_parser.decode_http_request(req_buffer)!

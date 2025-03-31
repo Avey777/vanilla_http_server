@@ -20,5 +20,5 @@ wrk  -H 'Connection: "keep-alive"' --connection 512 --threads 16 --duration 10s 
 ```sh
 # Race condition check
 v -prod -gc none .
-valgrind --tool=helgrind ./vanilla_http_server
+valgrind --tool=helgrind ./vanilla
 ```
