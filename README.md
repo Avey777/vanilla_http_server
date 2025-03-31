@@ -3,8 +3,8 @@
 - Fast (Multi-threaded, non-blocking i/o, lock-free, copy-free, epoll, SO_REUSEPORT)
 - Thread affinity (W.I.P.)
 - Modular (can use any HTTP parser)
-- Etag header by default
-- time header by default
+- Etag header by default (W.I.P.)
+- time header by default (W.I.P.)
 - Memory safety, No race condition
 - No magic
 - Allow e2e test and scripting without needs running the server, you only needs pass the raw requist to handle_request ()
