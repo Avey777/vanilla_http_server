@@ -13,31 +13,18 @@ $if !windows {
 }
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
-
 fn C.bind(sockfd int, addr &C.sockaddr_in, addrlen u32) int
-
 fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
-
 fn C.recv(__fd int, __buf voidptr, __n usize, __flags int) int
-
 fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen u32) int
-
 fn C.listen(__fd int, __n int) int
-
 fn C.perror(s &u8)
-
 fn C.close(fd int) int
-
 fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
-
 fn C.htons(__hostshort u16) u16
-
 fn C.epoll_create1(__flags int) int
-
 fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
-
 fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
-
 fn C.fcntl(fd int, cmd int, arg int) int
 
 struct C.in_addr {
@@ -159,8 +146,8 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 	mut events := [1]C.epoll_event{}
 
 	for {
-		n := C.epoll_wait(main_epoll_fd, &events[0], 1, -1)
-		if n < 0 {
+		num_events := C.epoll_wait(main_epoll_fd, &events[0], 1, -1)
+		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue
 			}
@@ -168,7 +155,7 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 			break
 		}
 
-		for i in 0 .. n {
+		for i in 0 .. num_events {
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				for {
 					client_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
@@ -207,20 +194,21 @@ fn process_events(mut server Server, epoll_fd int) {
 		}
 
 		for i in 0 .. num_events {
-			fd := unsafe { events[i].data.fd }
+			client_fd := unsafe { events[i].data.fd }
 			if events[i].events & u32(C.EPOLLHUP | C.EPOLLERR) != 0 {
-				remove_fd_from_epoll(epoll_fd, fd)
-				close_socket(fd)
+				remove_fd_from_epoll(epoll_fd, client_fd)
+				close_socket(client_fd)
 				continue
 			}
 
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				request_buffer := [140]u8{}
-				bytes_read := C.recv(fd, &request_buffer[0], request_buffer.len, 0)
+				bytes_read := C.recv(client_fd, &request_buffer[0], request_buffer.len,
+					0)
 				if bytes_read <= 0 {
 					if bytes_read == 0 || (C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
-						remove_fd_from_epoll(epoll_fd, fd)
-						close_socket(fd)
+						remove_fd_from_epoll(epoll_fd, client_fd)
+						close_socket(client_fd)
 					}
 					continue
 				}
@@ -230,17 +218,17 @@ fn process_events(mut server Server, epoll_fd int) {
 
 				response_buffer := server.request_handler(readed_request_buffer) or {
 					eprintln('Error handling request ${err}')
-					C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+					C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 						0)
-					remove_fd_from_epoll(epoll_fd, fd)
-					close_socket(fd)
+					remove_fd_from_epoll(epoll_fd, client_fd)
+					close_socket(client_fd)
 					continue
 				}
 
-				sent := C.send(fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL)
+				sent := C.send(client_fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL | C.MSG_ZEROCOPY)
 				if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-					remove_fd_from_epoll(epoll_fd, fd)
-					close_socket(fd)
+					remove_fd_from_epoll(epoll_fd, client_fd)
+					close_socket(client_fd)
 				}
 			}
 		}
