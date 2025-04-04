@@ -1,3 +1,11 @@
+# Contributing
+
+## Rules
+
+- Don't slow down performance
+- Always try to keep abstraction to a minimum
+- Don't complicate it
+
 ## Benchmarking & Testing
 
 ### CURL
