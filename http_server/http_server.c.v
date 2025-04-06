@@ -3,6 +3,8 @@ module http_server
 const max_connection_size = 1024
 const max_thread_pool_size = 16
 pub const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_499_response = 'HTTP/1.1 499 Client Closed Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 #include <fcntl.h>
 #include <errno.h>
@@ -57,7 +59,7 @@ pub mut:
 	socket_fd       int
 	epoll_fds       [max_thread_pool_size]int
 	threads         [max_thread_pool_size]thread
-	request_handler fn ([]u8) ![]u8 @[required]
+	request_handler fn ([]u8, int) ![]u8 @[required]
 }
 
 fn set_blocking(fd int, blocking bool) {
@@ -158,8 +160,8 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 		for i in 0 .. num_events {
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				for {
-					client_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
-					if client_fd < 0 {
+					client_conn_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
+					if client_conn_fd < 0 {
 						// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
 						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 							break // No more incoming connections; exit loop.
@@ -168,11 +170,11 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 						C.perror('Accept failed'.str)
 						continue
 					}
-					set_blocking(client_fd, false)
+					set_blocking(client_conn_fd, false)
 					epoll_fd := server.epoll_fds[next_worker]
 					next_worker = (next_worker + 1) % max_thread_pool_size
-					if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) < 0 {
-						close_socket(client_fd)
+					if add_fd_to_epoll(epoll_fd, client_conn_fd, u32(C.EPOLLIN | C.EPOLLET)) < 0 {
+						close_socket(client_conn_fd)
 					}
 				}
 			}
@@ -194,21 +196,21 @@ fn process_events(mut server Server, epoll_fd int) {
 		}
 
 		for i in 0 .. num_events {
-			client_fd := unsafe { events[i].data.fd }
+			client_conn_fd := unsafe { events[i].data.fd }
 			if events[i].events & u32(C.EPOLLHUP | C.EPOLLERR) != 0 {
-				remove_fd_from_epoll(epoll_fd, client_fd)
-				close_socket(client_fd)
+				remove_fd_from_epoll(epoll_fd, client_conn_fd)
+				close_socket(client_conn_fd)
 				continue
 			}
 
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				request_buffer := [140]u8{}
-				bytes_read := C.recv(client_fd, &request_buffer[0], request_buffer.len,
+				bytes_read := C.recv(client_conn_fd, &request_buffer[0], request_buffer.len,
 					0)
 				if bytes_read <= 0 {
 					if bytes_read == 0 || (C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
-						remove_fd_from_epoll(epoll_fd, client_fd)
-						close_socket(client_fd)
+						remove_fd_from_epoll(epoll_fd, client_conn_fd)
+						close_socket(client_conn_fd)
 					}
 					continue
 				}
@@ -216,19 +218,20 @@ fn process_events(mut server Server, epoll_fd int) {
 				mut readed_request_buffer := []u8{cap: bytes_read}
 				unsafe { readed_request_buffer.push_many(&request_buffer[0], bytes_read) }
 
-				response_buffer := server.request_handler(readed_request_buffer) or {
+				response_buffer := server.request_handler(readed_request_buffer, client_conn_fd) or {
 					eprintln('Error handling request ${err}')
-					C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+					C.send(client_conn_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 						0)
-					remove_fd_from_epoll(epoll_fd, client_fd)
-					close_socket(client_fd)
+					remove_fd_from_epoll(epoll_fd, client_conn_fd)
+					close_socket(client_conn_fd)
 					continue
 				}
 
-				sent := C.send(client_fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL | C.MSG_ZEROCOPY)
+				sent := C.send(client_conn_fd, response_buffer.data, response_buffer.len,
+					C.MSG_NOSIGNAL | C.MSG_ZEROCOPY)
 				if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-					remove_fd_from_epoll(epoll_fd, client_fd)
-					close_socket(client_fd)
+					remove_fd_from_epoll(epoll_fd, client_conn_fd)
+					close_socket(client_conn_fd)
 				}
 			}
 		}

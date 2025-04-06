@@ -21,14 +21,17 @@ To install the `vanilla_http_server` module, follow these steps:
 
 1. Create the necessary directories:
 
-   ```bash
-   mkdir -p ~/.vmodules/enghitalo/vanilla
-   ```
+```bash
+mkdir -p ~/.vmodules/enghitalo/vanilla
+```
 
 2. Copy the `vanilla_http_server` directory to the target location:
-   ```bash
-   cp -r ./ ~/.vmodules/enghitalo/vanilla
-   ```
+
+```bash
+cp -r ./ ~/.vmodules/enghitalo/vanilla
+# run
+v -prod crun examples/simple
+```
 
 This will set up the module in your `~/.vmodules` directory for use.
 
@@ -41,6 +44,7 @@ v install https://github.com/enghitalo/vanilla_http_server
 ## Benchmarking
 
 ```sh
+curl -v http://localhost:3001
 wrk  -H 'Connection: "keep-alive"' --connection 512 --threads 16 --duration 60s http://localhost:3001
 ```
 

@@ -3,7 +3,7 @@ module main
 import enghitalo.vanilla.http_server
 import enghitalo.vanilla.request_parser
 
-fn handle_request(req_buffer []u8) ![]u8 {
+fn handle_request(req_buffer []u8, client_conn_fd int) ![]u8 {
 	req := request_parser.decode_http_request(req_buffer)!
 
 	method := unsafe { tos(&req.buffer[req.method.start], req.method.len) }
