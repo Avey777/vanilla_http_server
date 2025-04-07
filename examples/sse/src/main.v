@@ -12,12 +12,29 @@ mut:
 	mutex   &sync.Mutex = sync.new_mutex()
 }
 
+fn (mut manager ClientManager) add_client(client_conn_fd int) {
+	manager.mutex.lock()
+	manager.clients[client_conn_fd] = client_conn_fd
+	manager.mutex.unlock()
+}
+
+fn (mut manager ClientManager) remove_client(client_conn_fd int) {
+	manager.mutex.lock()
+	manager.clients.delete(client_conn_fd)
+	manager.mutex.unlock()
+}
+
+fn (mut manager ClientManager) get_clients() []int {
+	manager.mutex.lock()
+	clients := manager.clients.keys()
+	manager.mutex.unlock()
+	return clients
+}
+
 fn sse_handler(client_conn_fd int, mut manager ClientManager) {
 	println('New SSE client connected: ${client_conn_fd}')
 
-	manager.mutex.lock()
-	manager.clients[client_conn_fd] = client_conn_fd // Using client_conn_fd as a simple identifier
-	manager.mutex.unlock()
+	manager.add_client(client_conn_fd)
 
 	headers := 'HTTP/1.1 200 OK\r\n' + 'Content-Type: text/event-stream\r\n' +
 		'Cache-Control: no-cache\r\n' + 'Connection: keep-alive\r\n' +
@@ -34,17 +51,16 @@ fn sse_handler(client_conn_fd int, mut manager ClientManager) {
 // send_notification Broadcasts a message to all connected clients
 fn send_notification(mut manager ClientManager, message string) {
 	println('Sending notification to all clients: ${message}')
-	manager.mutex.lock()
-	for client_conn_fd, _ in manager.clients {
+	clients := manager.get_clients()
+	for client_conn_fd in clients {
 		println('Sending to client: ${client_conn_fd}')
 		event := 'data: ${message}\n\n'
 		sent := C.send(client_conn_fd, event.str, event.len, 0)
 		if sent < 0 {
 			// Remove disconnected clients
-			manager.clients.delete(client_conn_fd)
+			manager.remove_client(client_conn_fd)
 		}
 	}
-	manager.mutex.unlock()
 }
 
 fn handle_request(req_buffer []u8, client_conn_fd int, mut manager ClientManager) ![]u8 {
@@ -52,15 +68,23 @@ fn handle_request(req_buffer []u8, client_conn_fd int, mut manager ClientManager
 	method := unsafe { tos(&req.buffer[req.method.start], req.method.len) }
 	path := unsafe { tos(&req.buffer[req.path.start], req.path.len) }
 
-	if method == 'GET' && path == '/sse' {
-		// Spawn a new thread to handle the SSE connection
-		spawn sse_handler(client_conn_fd, mut manager)
-		// Return an empty response to keep the connection open
-		return []u8{}
-	} else if method == 'POST' && path == '/notification' {
-		notification := 'Notification at ${time.utc().format_ss()}'
-		spawn send_notification(mut manager, notification)
-		return 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+	match method {
+		'GET' {
+			if path == '/sse' {
+				// Spawn a new thread to handle the SSE connection
+				spawn sse_handler(client_conn_fd, mut manager)
+				// Return an empty response to keep the connection open
+				return []u8{}
+			}
+		}
+		'POST' {
+			if path == '/notification' {
+				notification := 'Notification at ${time.utc().format_ss()}'
+				spawn send_notification(mut manager, notification)
+				return 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+			}
+		}
+		else {}
 	}
 
 	return http_server.tiny_bad_request_response
