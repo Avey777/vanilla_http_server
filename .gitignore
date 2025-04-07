@@ -6,9 +6,6 @@ vanilla
 *.so
 *.dylib
 *.dll
-examples/simple/simple
-examples/simple/simple.exe
-examples/simple/simple.exe~
 
 # Ignore binary output folders
 bin/
