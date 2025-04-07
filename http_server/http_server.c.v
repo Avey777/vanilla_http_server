@@ -147,10 +147,10 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) {
 
 fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 	mut next_worker := 0
-	mut events := [1]C.epoll_event{}
+	mut event := C.epoll_event{}
 
 	for {
-		num_events := C.epoll_wait(main_epoll_fd, &events[0], 1, -1)
+		num_events := C.epoll_wait(main_epoll_fd, &event, 1, -1)
 		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue
@@ -159,25 +159,31 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 			break
 		}
 
-		for i in 0 .. num_events {
-			if events[i].events & u32(C.EPOLLIN) != 0 {
-				for {
-					client_conn_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
-					if client_conn_fd < 0 {
-						// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
-						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
-							break // No more incoming connections; exit loop.
-						}
-						eprintln(@LOCATION)
-						C.perror('Accept failed'.str)
-						continue
+		if num_events > 1 {
+			eprintln('More than one event in epoll_wait, this should not happen.')
+			continue
+		}
+
+		if event.events & u32(C.EPOLLIN) != 0 {
+			for {
+				client_conn_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
+				if client_conn_fd < 0 {
+					// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
+					if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+						break // No more incoming connections; exit loop.
 					}
-					set_blocking(client_conn_fd, false)
-					epoll_fd := server.epoll_fds[next_worker]
-					next_worker = (next_worker + 1) % max_thread_pool_size
-					if add_fd_to_epoll(epoll_fd, client_conn_fd, u32(C.EPOLLIN | C.EPOLLET)) < 0 {
-						close_socket(client_conn_fd)
-					}
+					eprintln(@LOCATION)
+					C.perror('Accept failed'.str)
+					continue
+				}
+				set_blocking(client_conn_fd, false)
+				// Load balance the client connection to the worker threads.
+				// this is a simple round-robin approach.
+				epoll_fd := server.epoll_fds[next_worker]
+				next_worker = (next_worker + 1) % max_thread_pool_size
+				if add_fd_to_epoll(epoll_fd, client_conn_fd, u32(C.EPOLLIN | C.EPOLLET)) < 0 {
+					close_socket(client_conn_fd)
+					continue
 				}
 			}
 		}
