@@ -1,7 +1,9 @@
 module http_server
 
+import runtime
+
 const max_connection_size = 1024
-const max_thread_pool_size = 16
+const max_thread_pool_size = runtime.nr_cpus()
 pub const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_499_response = 'HTTP/1.1 499 Client Closed Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
@@ -57,8 +59,8 @@ pub:
 	port int = 3000
 pub mut:
 	socket_fd       int
-	epoll_fds       [max_thread_pool_size]int
-	threads         [max_thread_pool_size]thread
+	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 	request_handler fn ([]u8, int) ![]u8 @[required]
 }
 
