@@ -5,8 +5,6 @@
 - **Fast**: Multi-threaded, non-blocking I/O, lock-free, copy-free, epoll, SO_REUSEPORT.
 - **Thread Affinity**: Work in Progress (W.I.P.).
 - **Modular**: Compatible with any HTTP parser.
-- **Etag Header**: Enabled by default (W.I.P.).
-- **Time Header**: Enabled by default (W.I.P.).
 - **Memory Safety**: No race conditions.
 - **No Magic**: Transparent and straightforward.
 - **E2E Testing**: Allows end-to-end testing and scripting without running the server. Simply pass the raw request to `handle_request()`.
