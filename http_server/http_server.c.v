@@ -190,6 +190,7 @@ fn handle_accept_loop(mut server Server, main_epoll_fd int) {
 	}
 }
 
+@[direct_array_access; manualfree]
 fn process_events(mut server Server, epoll_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
 
@@ -199,6 +200,7 @@ fn process_events(mut server Server, epoll_fd int) {
 			if C.errno == C.EINTR {
 				continue
 			}
+			eprintln(@LOCATION)
 			C.perror('epoll_wait'.str)
 			break
 		}
@@ -212,22 +214,46 @@ fn process_events(mut server Server, epoll_fd int) {
 			}
 
 			if events[i].events & u32(C.EPOLLIN) != 0 {
-				request_buffer := [140]u8{}
-				bytes_read := C.recv(client_conn_fd, &request_buffer[0], request_buffer.len,
-					0)
-				if bytes_read <= 0 {
-					if bytes_read == 0 || (C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
+				mut request_buffer := []u8{}
+				defer {
+					unsafe {
+						request_buffer.free()
+					}
+				}
+				mut temp_buffer := [140]u8{}
+				for {
+					bytes_read := C.recv(client_conn_fd, &temp_buffer[0], temp_buffer.len,
+						0)
+					if bytes_read < 0 {
+						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+							break // No more data to read
+						}
+						eprintln(@LOCATION)
+						C.perror('recv'.str)
 						remove_fd_from_epoll(epoll_fd, client_conn_fd)
 						close_socket(client_conn_fd)
+						break
 					}
+					if bytes_read == 0 {
+						// Client closed the connection
+						remove_fd_from_epoll(epoll_fd, client_conn_fd)
+						close_socket(client_conn_fd)
+						break
+					}
+					unsafe { request_buffer.push_many(&temp_buffer[0], bytes_read) }
+					if bytes_read < temp_buffer.len {
+						break // Assume the request is complete
+					}
+				}
+
+				if request_buffer.len == 0 {
+					C.send(client_conn_fd, status_444_response.data, status_444_response.len,
+						0)
 					continue
 				}
 
-				mut readed_request_buffer := []u8{cap: bytes_read}
-				unsafe { readed_request_buffer.push_many(&request_buffer[0], bytes_read) }
-
-				response_buffer := server.request_handler(readed_request_buffer, client_conn_fd) or {
-					eprintln('Error handling request ${err}')
+				response_buffer := server.request_handler(request_buffer, client_conn_fd) or {
+					eprintln('Error handling request: ${err}')
 					C.send(client_conn_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 						0)
 					remove_fd_from_epoll(epoll_fd, client_conn_fd)
@@ -238,6 +264,8 @@ fn process_events(mut server Server, epoll_fd int) {
 				sent := C.send(client_conn_fd, response_buffer.data, response_buffer.len,
 					C.MSG_NOSIGNAL | C.MSG_ZEROCOPY)
 				if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+					eprintln(@LOCATION)
+					C.perror('send'.str)
 					remove_fd_from_epoll(epoll_fd, client_conn_fd)
 					close_socket(client_conn_fd)
 				}
